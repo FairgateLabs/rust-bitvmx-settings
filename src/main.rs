@@ -13,7 +13,7 @@ fn main() -> Result<(), bitvmx_settings::errors::ConfigError> {
         .with_target(false)
         .init();
 
-    let config = settings::load::<Config>()?;
+    let config = settings::load_and_check_args::<Config>()?;
     println!("Config: {:?}", config.test);
     Ok(())
 }

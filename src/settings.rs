@@ -26,17 +26,28 @@ macro_rules! generate_merge_function {
 }*/
 
 #[derive(Parser, Debug, Deserialize)]
-pub struct Args {
+pub struct ConfigurationFile {
     #[arg(short, long)]
     pub configuration: Option<String>,
 }
 
 pub fn load<T: for<'a> Deserialize<'a>>() -> Result<T, ConfigError> {
+    parse_config(&get_env())
+}
+
+pub fn load_config_file<T: for<'a> Deserialize<'a>>(
+    config_file: Option<String>,
+) -> Result<T, ConfigError> {
+    let config_file = config_file.unwrap_or_else(|| get_env());
+    parse_config(&config_file)
+}
+
+pub fn load_and_check_args<T: for<'a> Deserialize<'a>>() -> Result<T, ConfigError> {
     parse_config(&get_config_file())
 }
 
 fn get_config_file() -> String {
-    let args = Args::parse();
+    let args = ConfigurationFile::parse();
     if let Some(config) = args.configuration {
         info!("Using configuration: {}", config);
         return config;
