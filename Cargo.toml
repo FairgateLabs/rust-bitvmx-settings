@@ -1,0 +1,12 @@
+[package]
+name = "bitvmx-settings"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thiserror = "2.0.3"
+config = "0.14.1"
+tracing = "0.1.41"
+tracing-subscriber = "0.3.18"
+serde = "1.0.204"
+clap = { version = "4.5.10", features = ["derive"] }
