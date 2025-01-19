@@ -38,7 +38,7 @@ pub fn load<T: for<'a> Deserialize<'a>>() -> Result<T, ConfigError> {
 pub fn load_config_file<T: for<'a> Deserialize<'a>>(
     config_file: Option<String>,
 ) -> Result<T, ConfigError> {
-    let config_file = config_file.unwrap_or_else(|| get_env());
+    let config_file = config_file.unwrap_or_else(get_env);
     parse_config(&config_file)
 }
 
