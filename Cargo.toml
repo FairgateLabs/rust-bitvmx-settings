@@ -2,10 +2,16 @@
 name = "bitvmx-settings"
 version = "0.1.0"
 edition = "2021"
+description = "A library for loading and managing configuration files with support for environment variables and file paths."
+license = "MIT"
+repository = "https://github.com/fairgateLabs/rust-bitvmx-settings"
+readme = "README.md"
+keywords = ["configuration", "settings"]
+categories = ["config", "utilities"]
 
 [dependencies]
 thiserror = "2.0.3"
-config = "0.14.1"
+config = "0.15.11"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.18"
 serde = "1.0.204"
