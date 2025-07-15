@@ -31,3 +31,10 @@ Set the `BITVMX_ENV` environment variable to specify which configuration file to
 ### Command-line Arguments
 
 You can also specify the configuration file directly using the `--configuration` or `-c` flag:
+
+## Contributing
+Contributions are welcome! Please open an issue or submit a pull request on GitHub.
+
+## License
+This project is licensed under the MIT License.
+
