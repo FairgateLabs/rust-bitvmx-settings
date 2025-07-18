@@ -3,6 +3,11 @@
 
 This project is a library for loading and managing configuration files, supporting both default and custom configurations through environment variables and file paths.
 
+## ⚠️ Disclaimer
+
+This library is currently under development and may not be fully stable.
+It is not production-ready, has not been audited, and future updates may introduce breaking changes without preserving backward compatibility.
+
 ## Usage
 
 1. **Load Default Configuration**:
