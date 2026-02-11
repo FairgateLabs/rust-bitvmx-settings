@@ -97,10 +97,47 @@ fn parse_config<T: for<'a> Deserialize<'a>>(config: &str) -> Result<T, ConfigErr
         );
     }
 
-    config_built
-        .unwrap()
-        .try_deserialize::<T>()
-        .map_err(ConfigError::ConfigFileError)
+    let config = config_built.unwrap();
+    println!("Config {:#?}", config);
+
+    // Resolve [env:NAME] patterns with environment variable values
+    let mut value: serde_json::Value = config
+        .try_deserialize()
+        .map_err(ConfigError::ConfigFileError)?;
+
+    resolve_env_vars(&mut value)?;
+    println!("Config after env resolution: {:#?}", value);
+
+    serde_json::from_value(value).map_err(|e| {
+        ConfigError::BadConfig(format!(
+            "Failed to deserialize config after env resolution: {e}"
+        ))
+    })
+}
+
+fn resolve_env_vars(value: &mut serde_json::Value) -> Result<(), ConfigError> {
+    match value {
+        serde_json::Value::String(s) => {
+            if s.starts_with("(env:") && s.ends_with(')') {
+                let var_name = &s[5..s.len() - 1];
+                *s = env::var(var_name).map_err(|_| {
+                    ConfigError::BadConfig(format!("Environment variable '{var_name}' not found"))
+                })?;
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for v in map.values_mut() {
+                resolve_env_vars(v)?;
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for v in arr.iter_mut() {
+                resolve_env_vars(v)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 #[cfg(feature = "encrypted")]
@@ -133,4 +170,81 @@ fn decrypt_age_in_memory(
         .map_err(|e| ConfigError::BadConfig(format!("plaintext is not valid UTF-8: {e}")))?;
 
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_resolve_env_vars_replaces_env_pattern() {
+        let var_name = "BITVMX_TEST_RESOLVE_VAR";
+        let var_value = "my_secret_value";
+        env::set_var(var_name, var_value);
+
+        let mut value = json!({
+            "plain": "no-replace",
+            "secret": format!("(env:{var_name})"),
+            "nested": {
+                "inner": format!("(env:{var_name})"),
+                "keep": 42
+            },
+            "list": ["a", format!("(env:{var_name})")]
+        });
+
+        resolve_env_vars(&mut value).expect("resolve_env_vars should succeed");
+
+        assert_eq!(value["plain"], "no-replace");
+        assert_eq!(value["secret"], var_value);
+        assert_eq!(value["nested"]["inner"], var_value);
+        assert_eq!(value["nested"]["keep"], 42);
+        assert_eq!(value["list"][0], "a");
+        assert_eq!(value["list"][1], var_value);
+
+        env::remove_var(var_name);
+    }
+
+    #[test]
+    fn test_resolve_env_vars_missing_var_returns_error() {
+        let mut value = json!({ "key": "(env:BITVMX_NONEXISTENT_VAR_12345)" });
+        let result = resolve_env_vars(&mut value);
+        assert!(result.is_err());
+    }
+
+    #[cfg(feature = "encrypted")]
+    #[test]
+    fn test_decrypt_age_in_memory_roundtrip() {
+        use age::secrecy::ExposeSecret;
+        use age::x25519;
+        use std::io::Write;
+
+        let identity = x25519::Identity::generate();
+        let recipient = identity.to_public();
+
+        // Encrypt a small YAML payload in memory
+        let plaintext = "database_url: postgres://localhost/mydb\nport: 5432\n";
+        let recipients: Vec<Box<dyn age::Recipient + Send>> = vec![Box::new(recipient)];
+        let encryptor = age::Encryptor::with_recipients(
+            recipients.iter().map(|r| r.as_ref() as &dyn age::Recipient),
+        )
+        .expect("valid recipient");
+
+        let mut encrypted = vec![];
+        {
+            let mut writer = encryptor
+                .wrap_output(&mut encrypted)
+                .expect("wrap_output should succeed");
+            writer
+                .write_all(plaintext.as_bytes())
+                .expect("write should succeed");
+            writer.finish().expect("finish should succeed");
+        }
+
+        let secret_key = identity.to_string();
+        let decrypted = decrypt_age_in_memory(&encrypted, secret_key.expose_secret())
+            .expect("decryption should succeed");
+
+        assert_eq!(&*decrypted, plaintext);
+    }
 }

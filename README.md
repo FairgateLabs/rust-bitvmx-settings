@@ -26,6 +26,9 @@ It is not production-ready, has not been audited, and future updates may introdu
    ```
 
 ### Security ###
+
+#### Encryption
+
 If the configuration file includes secrets, it is recommended to enable the encrypted feature (enabled by default).
 
 To use encrypted settings:
@@ -46,6 +49,18 @@ To use encrypted settings:
 
 
 ⚠ Never commit key.txt or unencrypted config files.
+
+#### Environment Variable Substitution
+
+The library also supports automatic replacement of values using environment variables.
+
+If an environment variable named `my_var` is set to `bar`, and your config contains:
+
+`foo: (env:my_var)`
+
+It will be automatically resolved to:
+
+`foo: bar`
 
 
 ### Configuration File
