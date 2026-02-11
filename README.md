@@ -25,6 +25,29 @@ It is not production-ready, has not been audited, and future updates may introdu
    let config: Config = settings::load_config_file(config_file)?;
    ```
 
+### Security ###
+If the configuration file includes secrets, it is recommended to enable the encrypted feature (enabled by default).
+
+To use encrypted settings:
+
+1. Install rage
+   `cargo install rage`
+
+2. Generate an age key pair
+   `rage-keygen -o key.txt`
+
+3. Encrypt the config file (uses the public key from key.txt)
+   `rage -e -i key.txt -o config.yaml.age config.yaml`
+
+4. Set environment variable BITVMX_AGE_KEY with the private key from key.txt
+   (the line starting with AGE-SECRET-KEY-)
+
+5. Use the library normally
+
+
+⚠ Never commit key.txt or unencrypted config files.
+
+
 ### Configuration File
 
 The configuration files are expected to be in YAML format and located in the `config` directory. The default configuration file is `development.yaml`.

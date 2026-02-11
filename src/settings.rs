@@ -73,7 +73,8 @@ fn parse_config<T: for<'a> Deserialize<'a>>(config: &str) -> Result<T, ConfigErr
     {
         use config::FileFormat;
         use std::fs;
-        if let Ok(secret_key) = std::env::var("BITVMX_AGE_KEY") {
+        use zeroize::Zeroizing;
+        if let Ok(secret_key) = std::env::var("BITVMX_AGE_KEY").map(Zeroizing::new) {
             let builder = Config::builder();
             let encrypted = fs::read(config)?;
 
@@ -103,11 +104,15 @@ fn parse_config<T: for<'a> Deserialize<'a>>(config: &str) -> Result<T, ConfigErr
 }
 
 #[cfg(feature = "encrypted")]
-fn decrypt_age_in_memory(ciphertext: &[u8], secret_key: &str) -> Result<String, ConfigError> {
+fn decrypt_age_in_memory(
+    ciphertext: &[u8],
+    secret_key: &str,
+) -> Result<zeroize::Zeroizing<String>, ConfigError> {
     use std::io::Read;
 
     use age::x25519;
     use age::Decryptor;
+    use zeroize::Zeroizing;
 
     // BITVMX_AGE_KEY expected like: "AGE-SECRET-KEY-...."
     let identity: x25519::Identity = secret_key
@@ -122,7 +127,7 @@ fn decrypt_age_in_memory(ciphertext: &[u8], secret_key: &str) -> Result<String, 
         .decrypt(std::iter::once(&identity as &dyn age::Identity))
         .map_err(|e| ConfigError::BadConfig(format!("decrypt failed: {e}")))?;
 
-    let mut out = String::new();
+    let mut out = Zeroizing::new(String::new());
     reader
         .read_to_string(&mut out)
         .map_err(|e| ConfigError::BadConfig(format!("plaintext is not valid UTF-8: {e}")))?;
