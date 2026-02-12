@@ -1,29 +1,15 @@
 use crate::errors::ConfigError;
 use clap::Parser;
 use config::Config;
+use config::FileFormat;
 use serde::Deserialize;
 use std::env;
+use std::fs;
 use tracing::{info, warn};
+use zeroize::Zeroizing;
 
 static DEFAULT_CONFIG: &str = "development";
 static CONFIG_PATH: &str = "config";
-
-/* TODO: Potential macro to merge structs
-#[macro_export]
-macro_rules! generate_merge_function {
-    ($struct_name:ident { $( $field:ident ),* }) => {
-        impl $struct_name {
-            /// Merges another instance into `self`, prioritizing non-`None` values from `other`.
-            pub fn merge_with(&mut self, other: Self) {
-                $(
-                    if other.$field.is_some() {
-                        self.$field = other.$field;
-                    }
-                )*
-            }
-        }
-    };
-}*/
 
 #[derive(Parser, Debug, Deserialize)]
 pub struct ConfigurationFile {
@@ -67,38 +53,13 @@ fn get_env() -> String {
 }
 
 fn parse_config<T: for<'a> Deserialize<'a>>(config: &str) -> Result<T, ConfigError> {
-    let mut config_built = None;
-
-    #[cfg(feature = "encrypted")]
-    {
-        use config::FileFormat;
-        use std::fs;
-        use zeroize::Zeroizing;
-        if let Ok(secret_key) = std::env::var("BITVMX_AGE_KEY").map(Zeroizing::new) {
-            let builder = Config::builder();
-            let encrypted = fs::read(config)?;
-
-            let plaintext = decrypt_age_in_memory(&encrypted, &secret_key)?;
-            config_built = Some(
-                builder
-                    .add_source(config::File::from_str(&plaintext, FileFormat::Yaml))
-                    .build()?,
-            );
-        }
-    }
-
-    if config_built.is_none() {
-        let builder = Config::builder();
-        config_built = Some(
-            builder
-                .add_source(config::File::with_name(config))
-                .build()
-                .map_err(ConfigError::ConfigFileError)?,
-        );
-    }
-
-    let config = config_built.unwrap();
-    println!("Config {:#?}", config);
+    let builder = Config::builder();
+    let config = builder
+        .add_source(config::File::from_str(
+            &decrypt_or_read_file(config)?,
+            FileFormat::Yaml,
+        ))
+        .build()?;
 
     // Resolve [env:NAME] patterns with environment variable values
     let mut value: serde_json::Value = config
@@ -106,7 +67,6 @@ fn parse_config<T: for<'a> Deserialize<'a>>(config: &str) -> Result<T, ConfigErr
         .map_err(ConfigError::ConfigFileError)?;
 
     resolve_env_vars(&mut value)?;
-    println!("Config after env resolution: {:#?}", value);
 
     serde_json::from_value(value).map_err(|e| {
         ConfigError::BadConfig(format!(
@@ -140,7 +100,16 @@ fn resolve_env_vars(value: &mut serde_json::Value) -> Result<(), ConfigError> {
     Ok(())
 }
 
-#[cfg(feature = "encrypted")]
+pub fn decrypt_or_read_file(fname: &str) -> Result<zeroize::Zeroizing<String>, ConfigError> {
+    if let Ok(secret_key) = std::env::var("BITVMX_AGE_KEY") {
+        let encrypted = fs::read(fname)?;
+        decrypt_age_in_memory(&encrypted, &secret_key)
+    } else {
+        let content = fs::read_to_string(fname)?;
+        Ok(zeroize::Zeroizing::new(content))
+    }
+}
+
 fn decrypt_age_in_memory(
     ciphertext: &[u8],
     secret_key: &str,
@@ -149,7 +118,6 @@ fn decrypt_age_in_memory(
 
     use age::x25519;
     use age::Decryptor;
-    use zeroize::Zeroizing;
 
     // BITVMX_AGE_KEY expected like: "AGE-SECRET-KEY-...."
     let identity: x25519::Identity = secret_key
@@ -212,7 +180,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[cfg(feature = "encrypted")]
     #[test]
     fn test_decrypt_age_in_memory_roundtrip() {
         use age::secrecy::ExposeSecret;
