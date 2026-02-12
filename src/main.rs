@@ -7,7 +7,7 @@ pub struct Config {
     test: String,
 }
 
-fn main() -> Result<(), bitvmx_settings::errors::ConfigError> {
+fn main() -> Result<(), bitvmx_settings::errors::SettingsError> {
     tracing_subscriber::fmt()
         .without_time()
         .with_target(false)

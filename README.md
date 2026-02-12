@@ -29,7 +29,7 @@ It is not production-ready, has not been audited, and future updates may introdu
 
 #### Encryption
 
-If the configuration file includes secrets, it is recommended to enable the encrypted feature (enabled by default).
+If the configuration file includes secrets it is recommended to encrypt the files.
 
 To use encrypted settings:
 

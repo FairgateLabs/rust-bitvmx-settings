@@ -127,7 +127,6 @@ pub fn decrypt_or_read_file(fname: &str) -> Result<zeroize::Zeroizing<String>, S
     }
 }
 
-#[cfg(feature = "encrypted")]
 fn decrypt_age_in_memory(
     ciphertext: &[u8],
     secret_key: &str,
@@ -198,7 +197,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[cfg(feature = "encrypted")]
     #[test]
     fn test_decrypt_age_in_memory_roundtrip() {
         use age::secrecy::ExposeSecret;
