@@ -1,12 +1,12 @@
-use config as settings;
+use config::ConfigError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum ConfigError {
+pub enum SettingsError {
     #[error("Bad configuration: {0}")]
     BadConfig(String),
     #[error("while trying to build configuration")]
-    ConfigFileError(#[from] settings::ConfigError),
+    ConfigFileError(#[from] ConfigError),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }
