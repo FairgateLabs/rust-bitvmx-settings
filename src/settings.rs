@@ -1,4 +1,4 @@
-use crate::errors::SettingsError;
+use crate::errors::ConfigError;
 use clap::Parser;
 use config::Config;
 use config::FileFormat;
@@ -11,41 +11,24 @@ use zeroize::Zeroizing;
 static DEFAULT_CONFIG: &str = "development";
 static CONFIG_PATH: &str = "config";
 
-/* TODO: Potential macro to merge structs
-#[macro_export]
-macro_rules! generate_merge_function {
-    ($struct_name:ident { $( $field:ident ),* }) => {
-        impl $struct_name {
-            /// Merges another instance into `self`, prioritizing non-`None` values from `other`.
-            pub fn merge_with(&mut self, other: Self) {
-                $(
-                    if other.$field.is_some() {
-                        self.$field = other.$field;
-                    }
-                )*
-            }
-        }
-    };
-}*/
-
 #[derive(Parser, Debug, Deserialize)]
 pub struct ConfigurationFile {
     #[arg(short, long)]
     pub configuration: Option<String>,
 }
 
-pub fn load<T: for<'a> Deserialize<'a>>() -> Result<T, SettingsError> {
+pub fn load<T: for<'a> Deserialize<'a>>() -> Result<T, ConfigError> {
     parse_config(&get_env())
 }
 
 pub fn load_config_file<T: for<'a> Deserialize<'a>>(
     config_file: Option<String>,
-) -> Result<T, SettingsError> {
+) -> Result<T, ConfigError> {
     let config_file = config_file.unwrap_or_else(get_env);
     parse_config(&config_file)
 }
 
-pub fn load_and_check_args<T: for<'a> Deserialize<'a>>() -> Result<T, SettingsError> {
+pub fn load_and_check_args<T: for<'a> Deserialize<'a>>() -> Result<T, ConfigError> {
     parse_config(&get_config_file())
 }
 
@@ -69,7 +52,7 @@ fn get_env() -> String {
     })
 }
 
-fn parse_config<T: for<'a> Deserialize<'a>>(config: &str) -> Result<T, SettingsError> {
+fn parse_config<T: for<'a> Deserialize<'a>>(config: &str) -> Result<T, ConfigError> {
     let builder = Config::builder();
     let config = builder
         .add_source(config::File::from_str(
@@ -81,24 +64,24 @@ fn parse_config<T: for<'a> Deserialize<'a>>(config: &str) -> Result<T, SettingsE
     // Resolve [env:NAME] patterns with environment variable values
     let mut value: serde_json::Value = config
         .try_deserialize()
-        .map_err(SettingsError::ConfigFileError)?;
+        .map_err(ConfigError::ConfigFileError)?;
 
     resolve_env_vars(&mut value)?;
 
     serde_json::from_value(value).map_err(|e| {
-        SettingsError::BadConfig(format!(
+        ConfigError::BadConfig(format!(
             "Failed to deserialize config after env resolution: {e}"
         ))
     })
 }
 
-fn resolve_env_vars(value: &mut serde_json::Value) -> Result<(), SettingsError> {
+fn resolve_env_vars(value: &mut serde_json::Value) -> Result<(), ConfigError> {
     match value {
         serde_json::Value::String(s) => {
             if s.starts_with("(env:") && s.ends_with(')') {
                 let var_name = &s[5..s.len() - 1];
                 *s = env::var(var_name).map_err(|_| {
-                    SettingsError::BadConfig(format!("Environment variable '{var_name}' not found"))
+                    ConfigError::BadConfig(format!("Environment variable '{var_name}' not found"))
                 })?;
             }
         }
@@ -117,7 +100,7 @@ fn resolve_env_vars(value: &mut serde_json::Value) -> Result<(), SettingsError> 
     Ok(())
 }
 
-pub fn decrypt_or_read_file(fname: &str) -> Result<zeroize::Zeroizing<String>, SettingsError> {
+pub fn decrypt_or_read_file(fname: &str) -> Result<zeroize::Zeroizing<String>, ConfigError> {
     if let Ok(secret_key) = std::env::var("BITVMX_AGE_KEY") {
         let encrypted = fs::read(fname)?;
         decrypt_age_in_memory(&encrypted, &secret_key)
@@ -130,7 +113,7 @@ pub fn decrypt_or_read_file(fname: &str) -> Result<zeroize::Zeroizing<String>, S
 fn decrypt_age_in_memory(
     ciphertext: &[u8],
     secret_key: &str,
-) -> Result<zeroize::Zeroizing<String>, SettingsError> {
+) -> Result<zeroize::Zeroizing<String>, ConfigError> {
     use std::io::Read;
 
     use age::x25519;
@@ -140,19 +123,19 @@ fn decrypt_age_in_memory(
     let identity: x25519::Identity = secret_key
         .trim()
         .parse()
-        .map_err(|e| SettingsError::BadConfig(format!("invalid BITVMX_AGE_KEY: {e}")))?;
+        .map_err(|e| ConfigError::BadConfig(format!("invalid BITVMX_AGE_KEY: {e}")))?;
 
     let decryptor = Decryptor::new(ciphertext)
-        .map_err(|e| SettingsError::BadConfig(format!("invalid age payload: {e}")))?;
+        .map_err(|e| ConfigError::BadConfig(format!("invalid age payload: {e}")))?;
 
     let mut reader = decryptor
         .decrypt(std::iter::once(&identity as &dyn age::Identity))
-        .map_err(|e| SettingsError::BadConfig(format!("decrypt failed: {e}")))?;
+        .map_err(|e| ConfigError::BadConfig(format!("decrypt failed: {e}")))?;
 
     let mut out = Zeroizing::new(String::new());
     reader
         .read_to_string(&mut out)
-        .map_err(|e| SettingsError::BadConfig(format!("plaintext is not valid UTF-8: {e}")))?;
+        .map_err(|e| ConfigError::BadConfig(format!("plaintext is not valid UTF-8: {e}")))?;
 
     Ok(out)
 }
