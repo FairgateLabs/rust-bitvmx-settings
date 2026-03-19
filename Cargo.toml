@@ -1,6 +1,6 @@
 [package]
 name = "bitvmx-settings"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 description = "A library for loading and managing configuration files with support for environment variables and file paths."
 license = "MIT"
