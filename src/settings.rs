@@ -1,10 +1,14 @@
 use crate::errors::ConfigError;
+use age::stream::StreamReader;
+use age::x25519;
+use age::Decryptor;
 use clap::Parser;
 use config::Config;
 use config::FileFormat;
 use serde::Deserialize;
 use std::env;
 use std::fs;
+use std::io::Read;
 use tracing::{info, warn};
 use zeroize::Zeroizing;
 
@@ -110,15 +114,10 @@ pub fn decrypt_or_read_file(fname: &str) -> Result<zeroize::Zeroizing<String>, C
     }
 }
 
-fn decrypt_age_in_memory(
-    ciphertext: &[u8],
-    secret_key: &str,
-) -> Result<zeroize::Zeroizing<String>, ConfigError> {
-    use std::io::Read;
-
-    use age::x25519;
-    use age::Decryptor;
-
+fn create_reader<'a>(
+    ciphertext: &'a [u8],
+    secret_key: &'a str,
+) -> Result<StreamReader<&'a [u8]>, ConfigError> {
     // BITVMX_AGE_KEY expected like: "AGE-SECRET-KEY-...."
     let identity: x25519::Identity = secret_key
         .trim()
@@ -128,14 +127,48 @@ fn decrypt_age_in_memory(
     let decryptor = Decryptor::new(ciphertext)
         .map_err(|e| ConfigError::BadConfig(format!("invalid age payload: {e}")))?;
 
-    let mut reader = decryptor
+    let reader = decryptor
         .decrypt(std::iter::once(&identity as &dyn age::Identity))
         .map_err(|e| ConfigError::BadConfig(format!("decrypt failed: {e}")))?;
 
+    Ok(reader)
+}
+
+fn decrypt_age_in_memory(
+    ciphertext: &[u8],
+    secret_key: &str,
+) -> Result<zeroize::Zeroizing<String>, ConfigError> {
+    let mut reader = create_reader(ciphertext, secret_key)?;
     let mut out = Zeroizing::new(String::new());
+
     reader
         .read_to_string(&mut out)
         .map_err(|e| ConfigError::BadConfig(format!("plaintext is not valid UTF-8: {e}")))?;
+
+    Ok(out)
+}
+
+// Needs this if the message isn't a valid string
+pub fn decrypt_or_read_file_bytes(fname: &str) -> Result<zeroize::Zeroizing<Vec<u8>>, ConfigError> {
+    if let Ok(secret_key) = std::env::var("BITVMX_AGE_KEY") {
+        let encrypted = fs::read(fname)?;
+        decrypt_age_in_memory_bytes(&encrypted, &secret_key)
+    } else {
+        let content = fs::read(fname)?;
+        Ok(zeroize::Zeroizing::new(content))
+    }
+}
+
+fn decrypt_age_in_memory_bytes(
+    ciphertext: &[u8],
+    secret_key: &str,
+) -> Result<zeroize::Zeroizing<Vec<u8>>, ConfigError> {
+    let mut reader = create_reader(ciphertext, secret_key)?;
+    let mut out = Zeroizing::new(Vec::<u8>::new());
+
+    reader
+        .read_to_end(&mut out)
+        .map_err(|e| ConfigError::BadConfig(format!("Could not read file: {e}")))?;
 
     Ok(out)
 }
@@ -213,5 +246,38 @@ mod tests {
             .expect("decryption should succeed");
 
         assert_eq!(&*decrypted, plaintext);
+    }
+
+    #[test]
+    fn test_decrypt_age_in_memory_bytes_roundtrip() {
+        use age::secrecy::ExposeSecret;
+        use age::x25519;
+        use std::io::Write;
+
+        let identity = x25519::Identity::generate();
+        let recipient = identity.to_public();
+
+        // Encrypt a random payload in memory
+        let bytes: Vec<u8> = vec![2, 4, 8, 16, 32, 64, 128];
+        let recipients: Vec<Box<dyn age::Recipient + Send>> = vec![Box::new(recipient)];
+        let encryptor = age::Encryptor::with_recipients(
+            recipients.iter().map(|r| r.as_ref() as &dyn age::Recipient),
+        )
+        .expect("valid recipient");
+
+        let mut encrypted = vec![];
+        {
+            let mut writer = encryptor
+                .wrap_output(&mut encrypted)
+                .expect("wrap_output should succeed");
+            writer.write_all(&bytes).expect("write should succeed");
+            writer.finish().expect("finish should succeed");
+        }
+
+        let secret_key = identity.to_string();
+        let decrypted = decrypt_age_in_memory_bytes(&encrypted, secret_key.expose_secret())
+            .expect("decryption should succeed");
+
+        assert_eq!(*decrypted, bytes);
     }
 }
