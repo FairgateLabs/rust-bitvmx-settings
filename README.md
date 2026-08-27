@@ -45,7 +45,7 @@ To use encrypted settings:
 4. Set environment variable BITVMX_AGE_KEY with the private key from key.txt
    (the line starting with AGE-SECRET-KEY-)
 
-5. Use the library normally
+5. Use the library normally.
 
 
 ⚠ Never commit key.txt or unencrypted config files.
