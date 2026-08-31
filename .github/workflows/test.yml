@@ -27,4 +27,5 @@ jobs:
       submodule_path: 'rust-bitvmx-settings'
       cargo_lock_path: 'rust-bitvmx-settings/Cargo.lock'
       target_path: 'rust-bitvmx-settings/target'
+      clippy: true
     secrets: inherit
